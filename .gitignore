@@ -1,3 +1,20 @@
+### Project specific exclusions
+
+# File hash, size, and path information
+hashData*json
+blacklist.json
+
+# Most parser outputs
+*txt
+nohup.out
+
+# Legacy output
+*.log
+DONE
+RUNNING
+
+### GitHub default Python gitignore below:
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
