@@ -1,5 +1,4 @@
 from dataclasses import dataclass, asdict
-from itertools import islice
 from pathlib import Path
 from typing import Iterator, Optional, Callable
 import argparse
@@ -9,6 +8,11 @@ import shutil
 import time
 import os
 import re
+
+# Assumptions
+# - Modified files either change in size or modification time
+# - Files are not being modified while hashing
+# - At least one file exists in the target scan directory
 
 
 @dataclass
@@ -54,33 +58,29 @@ def getFileList(root: Path = None):
             directory = stack.pop()
             try:
                 for entry in directory.iterdir():
-                    if entry.is_dir():
+                    if entry.is_dir(follow_symlinks=False):
                         if entry.name != ".zfs":
                             stack.append(entry)
                     elif not entry.is_symlink():
                         yield entry
             except PermissionError as e:
-                print(f"Unable to iterate directory {str(entry)}: {str(e)}")
+                print(f"Unable to iterate directory: {str(e)}")
 
     return _walk()
 
 
 def hashFile(file: Path):
     BUF_SIZE = 65536
-    md5 = hashlib.md5()
-    # sha1 = hashlib.sha1()
+    hasher = hashlib.sha3_256()
 
     with file.open("rb") as reader:
         while True:
             data = reader.read(BUF_SIZE)
             if not data:
                 break
-            md5.update(data)
-            # sha1.update(data)
+            hasher.update(data)
 
-    return md5.hexdigest()
-    # print("MD5: {0}".format(md5.hexdigest()))
-    # print("SHA1: {0}".format(sha1.hexdigest()))
+    return hasher.hexdigest()
 
 
 def getHashData(
@@ -313,7 +313,8 @@ def runHash(hashDataPath: Path, oldHashData: dict[str, HashData]):
             bytesProgressGib = bytesProgress / 1024.0 / 1024.0 / 1024.0
             diskPercentage = bytesProgress * 100.0 / diskUsage
             print(
-                f"{bytesProgressGib:.3f} gib / {diskUsageGb:.3f} gib ({diskPercentage:.2f}%)"
+                f"{bytesProgressGib:.3f} gib / {diskUsageGb:.3f} gib ({diskPercentage:.2f}%)",
+                flush=True,
             )
 
     # Read the existing hash list, generate hashes for missing elements, and write to tmp.
@@ -491,28 +492,6 @@ def fullRun():
 
     if args.wait:
         input("Press enter to exit...")
-
-
-def runTest():
-    testFiles = islice(getFileList(), 50)
-    startTime = time.perf_counter()
-    data1 = getHashData(testFiles, lambda x: print(f"Hashing file {x}"))
-    stopTime = time.perf_counter()
-    print(f"Full hash: {stopTime - startTime:.6f}")
-
-    writeHashData(data1, Path("testHashData.json"))
-    data2 = readHashData(Path("testHashData.json"))
-
-    testFiles = islice(getFileList(), 50)
-
-    startTime = time.perf_counter()
-    data3 = getHashData(testFiles, oldHashData=data2)
-    stopTime = time.perf_counter()
-    print(f"Skip hash: {stopTime - startTime:.6f}")
-    print(f"size {len(data3)}")
-
-    assert data1 == data2, f"{data1}\nvs\n{data2}"
-    assert data2 == data3, f"{data2}\nvs\n{data3}"
 
 
 def main():
